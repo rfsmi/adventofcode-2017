@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use itertools::{Itertools, MinMaxResult::MinMax};
+use itertools::Itertools;
 use nom::{
     IResult,
     branch::alt,
