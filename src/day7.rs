@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use itertools::Itertools;
+use itertools::{Itertools, MinMaxResult::MinMax};
 use nom::{
     IResult,
     branch::alt,
@@ -47,70 +47,32 @@ pub fn solve(s: &str) -> &str {
 }
 
 pub fn solve_2(s: &str) -> i32 {
-    #[derive(PartialEq, Eq)]
-    struct Subtree {
-        balanced: bool,
-        weight: i32,
-    }
-
     let root = solve(s);
     let discs = parse(s).unwrap().1;
     let discs: HashMap<_, _> = discs.into_iter().map(|d| (d.name, d)).collect();
-    let mut subtrees = HashMap::new();
-
-    // Compute the weight of each subtree and whether it's balanced.
-    enum Instr {
-        Recurse,
-        Record,
-    }
-    let mut stack = vec![(Instr::Recurse, root)];
-    let mut ret: Vec<Subtree> = Vec::new();
-    while let Some((instr, n)) = stack.pop() {
+    let mut stack = vec![(false, root)];
+    let mut retvals: Vec<i32> = Vec::new();
+    while let Some((done, n)) = stack.pop() {
         let disc = discs.get(n).unwrap();
-        match instr {
-            Instr::Recurse => {
-                stack.push((Instr::Record, n));
-                stack.extend(disc.children.iter().map(|&n| (Instr::Recurse, n)));
-            }
-            Instr::Record => {
-                let rets = ret.split_off(ret.len() - disc.children.len());
-                let balanced = rets.iter().all_equal();
-                let weight = rets.iter().map(|r| r.weight).sum::<i32>() + disc.weight;
-                ret.push(Subtree { balanced, weight });
-                subtrees.insert(n, Subtree { balanced, weight });
-            }
+        if !done {
+            stack.push((true, n));
+            stack.extend(disc.children.iter().rev().map(|&n| (false, n)));
+            continue;
         }
+        let ws = retvals.split_off(retvals.len() - disc.children.len());
+        if ws.iter().all_equal() {
+            retvals.push(ws.iter().sum::<i32>() + disc.weight);
+            continue;
+        }
+        // We've found our imbalance
+        assert!(ws.len() > 2); // Don't bother with this case
+        let others_all_equal =
+            |&i: &usize| (0..i).chain(i + 1..ws.len()).map(|j| ws[j]).all_equal();
+        let i = (0..ws.len()).find(others_all_equal).unwrap();
+        let missing_weight = ws[(i + 1) % ws.len()] - ws[i];
+        return discs.get(disc.children[i]).unwrap().weight + missing_weight;
     }
-
-    // Find the deepest imbalanced node.
-    let mut n = root;
-    let mut sibling_weight = None;
-    loop {
-        let children = &discs.get(n).unwrap().children;
-        let Some(c) = children.iter().find(|&c| {
-            let subtree = subtrees.get(c).unwrap();
-            !subtree.balanced
-        }) else {
-            break;
-        };
-        n = c;
-        sibling_weight = children.iter().find_map(|&c| {
-            let subtree = subtrees.get(c).unwrap();
-            subtree.balanced.then_some(subtree.weight)
-        });
-    }
-
-    // Determine which of its children need fixing.
-    // Note: fails if only the root node is unbalanced (as in the example).
-    let missing_weight = sibling_weight.unwrap() - subtrees.get(n).unwrap().weight;
-    let children = &discs.get(n).unwrap().children;
-    let c = if missing_weight > 0 {
-        (0..children.len()).min_by_key(|&i| subtrees.get(children[i]).unwrap().weight)
-    } else {
-        (0..children.len()).max_by_key(|&i| subtrees.get(children[i]).unwrap().weight)
-    };
-    let c = children[c.unwrap()];
-    discs.get(c).unwrap().weight + missing_weight
+    panic!()
 }
 
 #[cfg(test)]
@@ -135,5 +97,10 @@ mod test {
     #[test]
     fn test_sample() {
         assert_eq!(solve(SAMPLE), "tknk");
+    }
+
+    #[test]
+    fn test_sample_2() {
+        assert_eq!(solve_2(SAMPLE), 60);
     }
 }
